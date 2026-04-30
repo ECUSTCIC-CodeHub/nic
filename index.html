@@ -898,7 +898,11 @@
     async function reviewApp(id, action) {
       const body = { action };
       if (action === 'reject') { const reason = document.getElementById('reject-reason'); if (reason) body.reason = reason.value.trim(); }
-      try { await api(`/api/applications/${id}`, { method: 'POST', body: JSON.stringify(body) }); toast(action === 'approve' ? '已通过' : '已拒绝'); closeModal(); renderPage(); } catch(e) { toast(e.message, 'error'); }
+      try {
+        const resp = await api(`/api/applications/${id}`, { method: 'POST', body: JSON.stringify(body) });
+        if (!resp.ok) { const data = await resp.json(); throw new Error(data.error || '操作失败'); }
+        toast(action === 'approve' ? '已通过' : '已拒绝'); closeModal(); renderPage();
+      } catch(e) { toast(e.message, 'error'); }
     }
 
     async function renderProviders(el, topBar) {
@@ -1042,7 +1046,12 @@
       const ttl = parseInt(document.getElementById('rec-ttl').value) || 600;
       const proxied = document.getElementById('rec-proxied').checked;
       if (!subdomain || !value) { toast('请填写子域名和记录值', 'error'); return; }
-      try { if (recordId) { await api(`/api/domains/${domainId}/records/${recordId}`, { method: 'PUT', body: JSON.stringify({ subdomain, type, value, ttl, proxied }) }); toast('记录已更新'); } else { await api(`/api/domains/${domId}/records`, { method: 'POST', body: JSON.stringify({ subdomain, type, value, ttl, proxied }) }); toast('记录已创建'); } closeModal(); renderPage(); } catch(e) { toast(e.message, 'error'); }
+      try {
+        let resp;
+        if (recordId) { resp = await api(`/api/domains/${domainId}/records/${recordId}`, { method: 'PUT', body: JSON.stringify({ subdomain, type, value, ttl, proxied }) }); } else { resp = await api(`/api/domains/${domId}/records`, { method: 'POST', body: JSON.stringify({ subdomain, type, value, ttl, proxied }) }); }
+        if (!resp.ok) { const data = await resp.json(); throw new Error(data.error || '操作失败'); }
+        toast(recordId ? '记录已更新' : '记录已创建'); closeModal(); renderPage();
+      } catch(e) { toast(e.message, 'error'); }
     }
 
     async function deleteRecord(domainId, recordId) {

@@ -100,8 +100,10 @@ export async function onRequestPost(context) {
       record.remote_id = result.id;
       record.status = 'active';
     } catch (e) {
-      record.status = 'error';
-      record.error = e.message;
+      return new Response(JSON.stringify({ error: 'DNS记录创建失败: ' + e.message }), {
+        status: 502,
+        headers: { 'Content-Type': 'application/json' },
+      });
     }
 
     await my_kv.put(`record:${application.domain_id}:${recordId}`, JSON.stringify(record));
