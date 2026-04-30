@@ -10,7 +10,7 @@
 - **DNS 记录管理** — 创建/编辑/删除 DNS 记录，自动同步到 Cloudflare / DNSPod API
 - **公开分发 API** — 无需认证即可查询域名解析记录
 - **管理面板** — 暗色主题 SPA，包含仪表盘、服务商、域名、记录、设置五个模块
-- **权限控制** — 皮肤站超级管理员 (permission >= 2) 或 UID 在管理员列表中的用户可操作
+- **权限控制** — 皮肤站管理员 (permission >= 1) 或 UID 在管理员列表中的用户可操作
 
 ## 项目结构
 
@@ -137,7 +137,7 @@ curl -X POST https://your-domain.com/api/init \
   }'
 ```
 
-> 皮肤站超级管理员（permission >= 2）自动拥有系统管理权限，无需手动添加到 admins 列表。
+> 皮肤站管理员（permission >= 1）自动拥有系统管理权限，无需手动添加到 admins 列表。
 
 ### 6. 访问管理面板
 
@@ -158,7 +158,7 @@ curl -X POST https://your-domain.com/api/init \
     ↓
 用 access_token 获取用户信息 (GET /api/user)
     ↓
-判断权限 (UID 在 admins 列表 或 permission >= 2)
+判断权限 (UID 在 admins 列表 或 permission >= 1)
     ↓
 创建会话，写入 KV，重定向到管理面板
 ```

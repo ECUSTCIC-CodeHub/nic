@@ -1124,7 +1124,7 @@
         <div class="card">
           <div class="card-title">管理员 UID</div>
           <div class="form-group"><label>管理员 UID 列表（逗号分隔）</label><input id="settings-admins" value="${(config.admins || []).join(', ')}" placeholder="例如: 1, 2, 3"></div>
-          <p style="font-size:13px;color:var(--text-dim);margin-bottom:16px">你的 UID: <strong>${currentUser?.uid || '未知'}</strong> | 皮肤站超级管理员 (permission >= 2) 自动拥有权限</p>
+          <p style="font-size:13px;color:var(--text-dim);margin-bottom:16px">你的 UID: <strong>${currentUser?.uid || '未知'}</strong> | 皮肤站管理员 (permission >= 1) 自动拥有权限</p>
           <button class="btn btn-primary" onclick="saveSettings()">保存设置</button>
         </div>
         <div class="card">

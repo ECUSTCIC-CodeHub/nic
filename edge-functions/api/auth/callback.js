@@ -65,7 +65,7 @@ export async function onRequestGet(context) {
   const userData = await userResponse.json();
 
   const adminList = await my_kv.get('config:admins', 'json') || [];
-  const isAdmin = adminList.includes(String(userData.uid)) || userData.permission >= 2;
+  const isAdmin = adminList.includes(String(userData.uid)) || userData.permission >= 1;
 
   const sessionId = crypto.randomUUID().replace(/-/g, '');
   const session = {
