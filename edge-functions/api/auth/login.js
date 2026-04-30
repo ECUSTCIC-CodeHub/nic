@@ -1,4 +1,5 @@
-const STATE_TTL = 10 * 60 * 1000;
+const STATE_TTL_MS = 10 * 60 * 1000;
+const STATE_TTL_S = 10 * 60;
 
 export async function onRequestGet(context) {
   const { env } = context;
@@ -6,19 +7,19 @@ export async function onRequestGet(context) {
   const redirectUri = url.searchParams.get('redirect_uri') || '';
   const state = crypto.randomUUID().replace(/-/g, '');
 
+  const now = Date.now();
   const stateData = JSON.stringify({
     redirect_uri: redirectUri,
-    created: Date.now(),
+    created: now,
   });
-  await my_kv.put(`oauth:state:${state}`, stateData);
+  await my_kv.put(`oauth:state:${state}`, stateData, { expirationTtl: STATE_TTL_S });
 
   const states = await my_kv.get('index:oauth:states', 'json') || [];
-  const now = Date.now();
-  const expired = states.filter(s => now - s.created > STATE_TTL);
+  const expired = states.filter(s => now - s.created > STATE_TTL_MS);
   for (const s of expired) {
     await my_kv.delete(`oauth:state:${s.key}`);
   }
-  const active = states.filter(s => now - s.created <= STATE_TTL);
+  const active = states.filter(s => now - s.created <= STATE_TTL_MS);
   active.push({ key: state, created: now });
   await my_kv.put('index:oauth:states', JSON.stringify(active));
 
