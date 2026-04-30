@@ -3,10 +3,10 @@ export async function onRequestPost(context) {
   if (token) {
     await my_kv.delete(`session:${token}`);
   }
-  return new Response(null, {
-    status: 302,
+  return new Response(JSON.stringify({ success: true }), {
+    status: 200,
     headers: {
-      Location: '/admin',
+      'Content-Type': 'application/json',
       'Set-Cookie': 'session=; Path=/; HttpOnly; Secure; SameSite=Strict; Max-Age=0',
     },
   });

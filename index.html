@@ -458,6 +458,8 @@
         padding: 72px 16px 24px;
       }
 
+      .main .top-bar { display: none; }
+
       .login-card { padding: 32px 24px; }
 
       .stats { grid-template-columns: repeat(2, 1fr); gap: 10px; }
@@ -547,6 +549,10 @@
           </div>
         </div>
         <div class="user-info" id="user-info"></div>
+        <div class="nav-item" style="border-top:1px solid var(--border);color:var(--error)" onclick="logout()">
+          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M9 21H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h4"/><polyline points="16 17 21 12 16 7"/><line x1="21" y1="12" x2="9" y2="12"/></svg>
+          退出登录
+        </div>
       </div>
     </div>
     <div class="main" id="main-content">
