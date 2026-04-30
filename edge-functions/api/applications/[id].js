@@ -164,7 +164,14 @@ export async function onRequestDelete(context) {
         if (existing && existing.remote_id) {
           const provider = await my_kv.get(`provider:${domain.provider_id}`, 'json');
           if (provider) {
-            try { await deleteDNSRecord(provider, domain, existing); } catch(e) {}
+            try {
+              await deleteDNSRecord(provider, domain, existing);
+            } catch (e) {
+              return new Response(JSON.stringify({ error: 'DNS记录删除失败: ' + e.message }), {
+                status: 502,
+                headers: { 'Content-Type': 'application/json' },
+              });
+            }
           }
         }
         await my_kv.delete(`record:${application.domain_id}:${application.record_id}`);
