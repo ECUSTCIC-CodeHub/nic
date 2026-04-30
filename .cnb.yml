@@ -1,0 +1,15 @@
+master:
+  push:
+    - name: sync
+      runner:
+        cpus: 1
+      imports: https://cnb.cool/ecustcic/key/-/blob/main/env.yml
+      stages:
+        - name: sync to github
+          image: tencentcom/git-sync
+          settings:
+            target_url: https://github.com/ECUSTCIC-CodeHub/nic.git
+            auth_type: https
+            username: ${GITHUB_USERNAME}
+            password: ${GITHUB_ACCESS_TOKEN}
+            force: true
