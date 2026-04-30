@@ -148,38 +148,34 @@ export async function onRequestDelete(context) {
 
   const { id } = context.params;
   const application = await my_kv.get(`application:${id}`, 'json');
-  if (!application) {
-    return new Response(JSON.stringify({ error: 'Application not found' }), {
-      status: 404,
-      headers: { 'Content-Type': 'application/json' },
-    });
-  }
 
-  if (!session.isAdmin && application.uid !== session.uid) {
-    return new Response(JSON.stringify({ error: 'Forbidden' }), {
-      status: 403,
-      headers: { 'Content-Type': 'application/json' },
-    });
-  }
-
-  if (application.status === 'approved' && application.record_id) {
-    const domain = await my_kv.get(`domain:${application.domain_id}`, 'json');
-    if (domain) {
-      const existing = await my_kv.get(`record:${application.domain_id}:${application.record_id}`, 'json');
-      if (existing && existing.remote_id) {
-        const provider = await my_kv.get(`provider:${domain.provider_id}`, 'json');
-        if (provider) {
-          try { await deleteDNSRecord(provider, domain, existing); } catch(e) {}
-        }
-      }
-      await my_kv.delete(`record:${application.domain_id}:${application.record_id}`);
-      const records = await my_kv.get(`index:records:${application.domain_id}`, 'json') || [];
-      const filtered = records.filter(r => r.id !== application.record_id);
-      await my_kv.put(`index:records:${application.domain_id}`, JSON.stringify(filtered));
+  if (application) {
+    if (!session.isAdmin && application.uid !== session.uid) {
+      return new Response(JSON.stringify({ error: 'Forbidden' }), {
+        status: 403,
+        headers: { 'Content-Type': 'application/json' },
+      });
     }
-  }
 
-  await my_kv.delete(`application:${id}`);
+    if (application.status === 'approved' && application.record_id) {
+      const domain = await my_kv.get(`domain:${application.domain_id}`, 'json');
+      if (domain) {
+        const existing = await my_kv.get(`record:${application.domain_id}:${application.record_id}`, 'json');
+        if (existing && existing.remote_id) {
+          const provider = await my_kv.get(`provider:${domain.provider_id}`, 'json');
+          if (provider) {
+            try { await deleteDNSRecord(provider, domain, existing); } catch(e) {}
+          }
+        }
+        await my_kv.delete(`record:${application.domain_id}:${application.record_id}`);
+        const records = await my_kv.get(`index:records:${application.domain_id}`, 'json') || [];
+        const filtered = records.filter(r => r.id !== application.record_id);
+        await my_kv.put(`index:records:${application.domain_id}`, JSON.stringify(filtered));
+      }
+    }
+
+    await my_kv.delete(`application:${id}`);
+  }
 
   const allApps = await my_kv.get('index:applications', 'json') || [];
   const filtered = allApps.filter(a => a.id !== id);

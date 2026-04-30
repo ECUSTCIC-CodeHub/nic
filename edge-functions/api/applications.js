@@ -9,13 +9,30 @@ export async function onRequestGet(context) {
 
   if (session.isAdmin) {
     const applications = await my_kv.get('index:applications', 'json') || [];
-    return new Response(JSON.stringify({ applications }), {
+    const valid = [];
+    for (const a of applications) {
+      const exists = await my_kv.get(`application:${a.id}`, 'json');
+      if (exists) { valid.push(a); }
+      else { continue; }
+    }
+    if (valid.length !== applications.length) {
+      await my_kv.put('index:applications', JSON.stringify(valid));
+    }
+    return new Response(JSON.stringify({ applications: valid }), {
       headers: { 'Content-Type': 'application/json' },
     });
   }
 
   const allApps = await my_kv.get('index:applications', 'json') || [];
-  const myApps = allApps.filter(a => a.uid === session.uid);
+  const validApps = [];
+  for (const a of allApps) {
+    const exists = await my_kv.get(`application:${a.id}`, 'json');
+    if (exists) { validApps.push(a); }
+  }
+  if (validApps.length !== allApps.length) {
+    await my_kv.put('index:applications', JSON.stringify(validApps));
+  }
+  const myApps = validApps.filter(a => a.uid === session.uid);
   return new Response(JSON.stringify({ applications: myApps }), {
     headers: { 'Content-Type': 'application/json' },
   });
