@@ -166,16 +166,16 @@ export async function onRequestDelete(context) {
     const domain = await my_kv.get(`domain:${application.domain_id}`, 'json');
     if (domain) {
       const existing = await my_kv.get(`record:${application.domain_id}:${application.record_id}`, 'json');
-      if (existing) {
+      if (existing && existing.remote_id) {
         const provider = await my_kv.get(`provider:${domain.provider_id}`, 'json');
-        if (provider && existing.remote_id) {
+        if (provider) {
           try { await deleteDNSRecord(provider, domain, existing); } catch(e) {}
         }
-        await my_kv.delete(`record:${application.domain_id}:${application.record_id}`);
-        const records = await my_kv.get(`index:records:${application.domain_id}`, 'json') || [];
-        const filtered = records.filter(r => r.id !== application.record_id);
-        await my_kv.put(`index:records:${application.domain_id}`, JSON.stringify(filtered));
       }
+      await my_kv.delete(`record:${application.domain_id}:${application.record_id}`);
+      const records = await my_kv.get(`index:records:${application.domain_id}`, 'json') || [];
+      const filtered = records.filter(r => r.id !== application.record_id);
+      await my_kv.put(`index:records:${application.domain_id}`, JSON.stringify(filtered));
     }
   }
 

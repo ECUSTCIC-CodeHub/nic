@@ -109,6 +109,10 @@ export async function onRequestDelete(context) {
       try {
         await deleteDNSRecord(provider, domain, existing);
       } catch (e) {
+        return new Response(JSON.stringify({ error: 'DNS记录删除失败: ' + e.message }), {
+          status: 502,
+          headers: { 'Content-Type': 'application/json' },
+        });
       }
     }
   }

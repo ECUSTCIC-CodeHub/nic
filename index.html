@@ -836,12 +836,20 @@
 
     async function cancelApplication(id) {
       if (!confirm('确定要撤回此申请吗？')) return;
-      try { await api(`/api/applications/${id}`, { method: 'DELETE' }); toast('申请已撤回'); renderPage(); } catch(e) { toast(e.message, 'error'); }
+      try {
+        const resp = await api(`/api/applications/${id}`, { method: 'DELETE' });
+        if (!resp.ok) { const data = await resp.json(); throw new Error(data.error || '操作失败'); }
+        toast('申请已撤回'); renderPage();
+      } catch(e) { toast(e.message, 'error'); }
     }
 
     async function deleteApplication(id) {
       if (!confirm('确定要删除此申请记录吗？已通过的申请删除后将同时移除对应 DNS 记录。')) return;
-      try { await api(`/api/applications/${id}`, { method: 'DELETE' }); toast('已删除'); renderPage(); } catch(e) { toast(e.message, 'error'); }
+      try {
+        const resp = await api(`/api/applications/${id}`, { method: 'DELETE' });
+        if (!resp.ok) { const data = await resp.json(); throw new Error(data.error || '操作失败'); }
+        toast('已删除'); renderPage();
+      } catch(e) { toast(e.message, 'error'); }
     }
 
     async function checkDNS(domainId, subdomain, appId) {
@@ -1067,7 +1075,11 @@
 
     async function deleteRecord(domainId, recordId) {
       if (!confirm('确定要删除此记录吗？')) return;
-      try { await api(`/api/domains/${domainId}/records/${recordId}`, { method: 'DELETE' }); toast('记录已删除'); renderPage(); } catch(e) { toast(e.message, 'error'); }
+      try {
+        const resp = await api(`/api/domains/${domainId}/records/${recordId}`, { method: 'DELETE' });
+        if (!resp.ok) { const data = await resp.json(); throw new Error(data.error || '删除失败'); }
+        toast('记录已删除'); renderPage();
+      } catch(e) { toast(e.message, 'error'); }
     }
 
     async function renderSettings(el, topBar) {
