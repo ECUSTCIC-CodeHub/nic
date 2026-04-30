@@ -14,6 +14,10 @@ export async function onRequestGet(context) {
   const stateData = await my_kv.get(`oauth:state:${state}`, 'json');
   await my_kv.delete(`oauth:state:${state}`);
 
+  const states = await my_kv.get('index:oauth:states', 'json') || [];
+  const updated = states.filter(s => s.key !== state);
+  await my_kv.put('index:oauth:states', JSON.stringify(updated));
+
   if (!stateData) {
     return new Response(JSON.stringify({ error: 'Invalid or expired state' }), {
       status: 400,
