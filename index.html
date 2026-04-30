@@ -752,23 +752,30 @@
     }
 
     async function renderApply(el, topBar) {
-      const domResp = await api('/api/domains');
+      const [domResp, provResp] = await Promise.all([api('/api/domains'), api('/api/providers')]);
       const domData = await domResp.json();
+      const provData = await provResp.json();
       domainsCache = domData.domains || [];
+      providersCache = provData.providers || [];
 
       if (!domainsCache.length) {
         el.innerHTML = `${topBar}<div class="empty-state"><h2>暂无可用域名</h2><p>请等待管理员添加根域名</p></div>`;
         return;
       }
 
+      const firstDomain = domainsCache[0];
+      const firstProv = providersCache.find(p => p.id === firstDomain.provider_id);
+      const isCF = firstProv?.type === 'cloudflare';
+
       el.innerHTML = `
         ${topBar}
         <div class="page-header"><h1>申请子域名</h1></div>
         <div class="card">
-          <div class="form-group"><label>根域名</label><select id="apply-domain">${domainsCache.map(d => `<option value="${d.id}">${d.root_domain}${d.description ? ' - ' + d.description : ''}</option>`).join('')}</select></div>
-          <div class="form-group"><label>子域名</label><input id="apply-subdomain" placeholder="例如: myname, blog, www"><p style="font-size:12px;color:var(--text-dim);margin-top:4px">完整域名: <span id="apply-preview">${domainsCache[0]?.root_domain || ''}</span></p><p id="apply-subdomain-hint" class="hidden" style="font-size:12px;color:var(--warning);margin-top:4px">SRV 记录子域名格式: _服务._协议，例如 _minecraft._tcp</p></div>
+          <div class="form-group"><label>根域名</label><select id="apply-domain" onchange="onApplyDomainChange()">${domainsCache.map(d => `<option value="${d.id}">${d.root_domain}${d.description ? ' - ' + d.description : ''}</option>`).join('')}</select></div>
+          <div class="form-group"><label>子域名</label><input id="apply-subdomain" placeholder="例如: myname, blog, www"><p style="font-size:12px;color:var(--text-dim);margin-top:4px">完整域名: <span id="apply-preview">${firstDomain.root_domain}</span></p><p id="apply-subdomain-hint" class="hidden" style="font-size:12px;color:var(--warning);margin-top:4px">SRV 记录子域名格式: _服务._协议，例如 _minecraft._tcp</p></div>
           <div class="form-group"><label>记录类型</label><select id="apply-type" onchange="onTypeChange()"><option value="A">A (IPv4 地址)</option><option value="AAAA">AAAA (IPv6 地址)</option><option value="CNAME">CNAME (别名)</option><option value="TXT">TXT (文本记录)</option><option value="MX">MX (邮件交换)</option><option value="SRV">SRV (服务记录)</option></select></div>
           <div class="form-group"><label>记录值</label><input id="apply-value" placeholder="例如: 1.2.3.4 或 example.com"></div>
+          <div id="apply-proxied-wrap" class="form-group" style="${isCF ? '' : 'display:none'}"><label style="display:flex;align-items:center;gap:8px;cursor:pointer;margin-bottom:0"><input type="checkbox" id="apply-proxied" style="width:auto;margin:0"> 开启 Cloudflare 代理（橙色云）</label><p style="font-size:12px;color:var(--text-dim);margin-top:4px">开启后流量将通过 Cloudflare 代理，支持 CDN 加速和 DDoS 防护，但部分服务（如邮件、游戏服务器）可能不兼容</p></div>
           <div class="form-group"><label>申请理由</label><textarea id="apply-reason" placeholder="简要说明用途"></textarea></div>
           <button class="btn btn-primary" onclick="submitApplication()">提交申请</button>
         </div>
@@ -786,12 +793,36 @@
       subInput.addEventListener('input', updatePreview);
     }
 
+    function onApplyDomainChange() {
+      const domainId = document.getElementById('apply-domain').value;
+      const dom = domainsCache.find(d => d.id === domainId);
+      const prov = providersCache.find(p => p.id === dom?.provider_id);
+      const wrap = document.getElementById('apply-proxied-wrap');
+      if (wrap) wrap.style.display = prov?.type === 'cloudflare' ? '' : 'none';
+      if (prov?.type !== 'cloudflare') {
+        const cb = document.getElementById('apply-proxied');
+        if (cb) cb.checked = false;
+      }
+    }
+
     function onTypeChange() {
       const type = document.getElementById('apply-type').value;
       const hint = document.getElementById('apply-subdomain-hint');
       const valueInput = document.getElementById('apply-value');
       if (type === 'SRV') { hint.classList.remove('hidden'); valueInput.placeholder = '例如: 10 5 25565 target.example.com'; }
       else { hint.classList.add('hidden'); valueInput.placeholder = '例如: 1.2.3.4 或 example.com'; }
+      const proxiedWrap = document.getElementById('apply-proxied-wrap');
+      const proxiedCb = document.getElementById('apply-proxied');
+      const noProxyTypes = ['TXT', 'MX', 'SRV'];
+      if (noProxyTypes.includes(type)) {
+        if (proxiedWrap) proxiedWrap.style.display = 'none';
+        if (proxiedCb) proxiedCb.checked = false;
+      } else {
+        const domainId = document.getElementById('apply-domain').value;
+        const dom = domainsCache.find(d => d.id === domainId);
+        const prov = providersCache.find(p => p.id === dom?.provider_id);
+        if (proxiedWrap) proxiedWrap.style.display = prov?.type === 'cloudflare' ? '' : 'none';
+      }
     }
 
     async function submitApplication() {
@@ -800,11 +831,13 @@
       const type = document.getElementById('apply-type').value;
       const value = document.getElementById('apply-value').value.trim();
       const reason = document.getElementById('apply-reason').value.trim();
+      const proxiedEl = document.getElementById('apply-proxied');
+      const proxied = proxiedEl && proxiedEl.checked;
       if (!subdomain || !value) { toast('请填写子域名和记录值', 'error'); return; }
       if (type === 'SRV') { if (!/^_[a-zA-Z0-9-]+\._[a-zA-Z0-9-]+/.test(subdomain)) { toast('SRV 子域名格式应为 _服务._协议', 'error'); return; } }
       else { if (!/^[a-zA-Z0-9]([a-zA-Z0-9-]*[a-zA-Z0-9])?$/.test(subdomain)) { toast('子域名只能包含字母、数字和连字符', 'error'); return; } }
       try {
-        const resp = await api('/api/applications', { method: 'POST', body: JSON.stringify({ domain_id, subdomain, type, value, reason }) });
+        const resp = await api('/api/applications', { method: 'POST', body: JSON.stringify({ domain_id, subdomain, type, value, reason, proxied }) });
         if (!resp.ok) { const data = await resp.json(); toast(data.error || '提交失败', 'error'); return; }
         toast('申请已提交，请等待审核');
         navigate('my-applications');
@@ -820,12 +853,12 @@
         <div class="page-header"><h1>我的申请</h1></div>
         <div class="card">
           ${apps.length ? wrapTable(`<table>
-            <thead><tr><th>域名</th><th>类型</th><th>值</th><th>理由</th><th>状态</th><th>时间</th><th>操作</th></tr></thead>
+            <thead><tr><th>域名</th><th>类型</th><th>值</th><th>申请理由</th><th>状态</th><th>时间</th><th>操作</th></tr></thead>
             <tbody>${apps.map(a => `<tr>
-              <td>${a.subdomain}.${a.root_domain}</td><td>${a.type}</td>
+              <td>${a.subdomain}.${a.root_domain}</td><td>${a.type}${a.proxied ? ' <span style="font-size:11px;color:var(--warning)">☁ 代理</span>' : ''}</td>
               <td style="max-width:180px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap" title="${a.value}">${a.value}</td>
               <td style="max-width:150px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap" title="${a.reason}">${a.reason || '-'}</td>
-              <td><span class="badge badge-${a.status}">${a.status === 'approved' ? '已通过' : a.status === 'rejected' ? '已拒绝' : '审核中'}</span></td>
+              <td><span class="badge badge-${a.status}">${a.status === 'approved' ? '已通过' : a.status === 'rejected' ? '已拒绝' : '审核中'}</span>${a.status === 'rejected' && a.reject_reason ? `<p style="font-size:12px;color:var(--danger);margin-top:4px" title="${a.reject_reason}">${a.reject_reason.length > 30 ? a.reject_reason.slice(0, 30) + '...' : a.reject_reason}</p>` : ''}</td>
               <td>${formatDate(a.created)}</td>
               <td class="actions-cell">${a.status !== 'pending' ? `<button class="btn btn-sm btn-danger" onclick="deleteApplication('${a.id}')">删除</button>` : `<button class="btn btn-sm btn-danger" onclick="cancelApplication('${a.id}')">撤回</button>`}</td>
             </tr>`).join('')}</tbody>
@@ -884,7 +917,7 @@
             <thead><tr><th>申请人</th><th>域名</th><th>类型</th><th>值</th><th>理由</th><th>DNS</th><th>时间</th><th>操作</th></tr></thead>
             <tbody>${pending.map(a => `<tr id="review-row-${a.id}">
               <td>${a.nickname} <span style="color:var(--text-dim);font-size:12px">(UID:${a.uid})</span></td>
-              <td>${a.subdomain}.${a.root_domain}</td><td>${a.type}</td>
+              <td>${a.subdomain}.${a.root_domain}</td><td>${a.type}${a.proxied ? ' <span style="font-size:11px;color:var(--warning)">☁ 代理</span>' : ''}</td>
               <td style="max-width:180px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap" title="${a.value}">${a.value}</td>
               <td style="max-width:150px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap" title="${a.reason}">${a.reason || '-'}</td>
               <td id="dns-check-${a.id}"><button class="btn btn-sm" onclick="checkDNS('${a.domain_id}','${a.subdomain}','${a.id}')">检查</button></td>
@@ -898,7 +931,7 @@
           ${processed.length ? wrapTable(`<table>
             <thead><tr><th>申请人</th><th>域名</th><th>类型</th><th>值</th><th>状态</th><th>处理时间</th></tr></thead>
             <tbody>${processed.map(a => `<tr>
-              <td>${a.nickname}</td><td>${a.subdomain}.${a.root_domain}</td><td>${a.type}</td>
+              <td>${a.nickname}</td><td>${a.subdomain}.${a.root_domain}</td><td>${a.type}${a.proxied ? ' <span style="font-size:11px;color:var(--warning)">☁ 代理</span>' : ''}</td>
               <td style="max-width:180px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap">${a.value}</td>
               <td><span class="badge badge-${a.status}">${a.status === 'approved' ? '已通过' : '已拒绝'}</span></td>
               <td>${formatDate(a.reviewed_at)}</td>

@@ -48,7 +48,7 @@ export async function onRequestPost(context) {
   }
 
   const body = await context.request.json();
-  const { domain_id, subdomain, type, value, reason } = body;
+  const { domain_id, subdomain, type, value, reason, proxied } = body;
 
   if (!domain_id || !subdomain || !type || !value) {
     return new Response(JSON.stringify({ error: 'Missing required fields' }), {
@@ -90,6 +90,7 @@ export async function onRequestPost(context) {
     type: type.toUpperCase(),
     value,
     reason: reason || '',
+    proxied: proxied || false,
     uid: session.uid,
     nickname: session.nickname,
     email: session.email || '',
