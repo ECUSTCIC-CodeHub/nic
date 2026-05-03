@@ -196,7 +196,7 @@ curl -X POST https://your-domain.com/api/init \
 2. 创建企业自建应用，获取 **App ID** 和 **App Secret**
 3. 在「权限管理」中添加以下权限：
    - `bitable:app` — 多维表格读写权限
-4. 发布应用并获取管理员审批
+4. 点击「创建版本」发布应用，并联系管理员审批通过
 
 ### 2. 创建多维表格数据表
 
@@ -219,13 +219,30 @@ curl -X POST https://your-domain.com/api/init \
 | 拒绝原因 | 多行文本 | 拒绝时的原因 |
 | 操作时间 | 文本 | ISO 格式时间戳 |
 
+### 3. 授权应用访问多维表格
+
+> ⚠️ **这一步最容易遗漏！** 仅添加 API 权限不够，还必须把应用添加到多维表格文档中。
+
+打开你的多维表格，在右上角点击 **分享** → 搜索你的**应用名称** → 设置为 **编辑** 权限。
+
+或者通过路径操作：多维表格右上角「…」→「更多」→「添加文档应用」→ 搜索并勾选你的应用。
+
 > **获取 Bitable ID 和 Table ID**：打开多维表格，浏览器地址栏中的 URL 格式为
 > `https://xxx.feishu.cn/base/{bitable_id}?table={table_id}`
-> 其中 `bitable_id` 即 `FEISHU_BITABLE_ID`，`table_id` 即 `FEISHU_TABLE_ID`。
+> 其中 `bitable_id` 即 `FEISHU_BITABLE_ID`（非 App ID！），`table_id` 即 `FEISHU_TABLE_ID`。
 
-### 3. 配置环境变量
+### 4. 配置环境变量
 
-在 EdgeOne Pages 项目设置中添加上述四个飞书环境变量即可。
+在 EdgeOne Pages 项目设置中添加以下四个飞书环境变量即可。
+
+### 5. 排查 91403 Forbidden 错误
+
+如果调用时返回 `code=91403, msg=Forbidden`，请确认：
+
+- [ ] 应用「权限管理」中已添加 `bitable:app` 且已**发布并通过审批**
+- [ ] 已通过多维表格的「分享」按钮把应用添加为**编辑**权限（见第 3 步）
+- [ ] `FEISHU_BITABLE_ID` 填写的是 URL 中 `base/` 后面的那串，不是 App ID
+- [ ] 应用与多维表格在**同一个飞书企业租户**下
 
 ## KV 数据结构
 | Key 前缀 | 说明 | 示例 |
