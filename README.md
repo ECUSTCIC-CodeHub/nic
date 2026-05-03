@@ -11,6 +11,7 @@
 - **公开分发 API** — 无需认证即可查询域名解析记录
 - **管理面板** — 暗色主题 SPA，包含仪表盘、服务商、域名、记录、设置五个模块
 - **权限控制** — 皮肤站管理员 (permission >= 1) 或 UID 在管理员列表中的用户可操作
+- **飞书多维表格同步** — 自动将申请、审批、删除记录写入飞书多维表格，便于审计和数据管理
 
 ## 项目结构
 
@@ -59,6 +60,8 @@ nic/
 | `/api/admin/config` | GET/POST | 管理员 | 系统配置 |
 | `/api/init` | POST | INIT_KEY | 系统初始化 |
 | `/api/health` | GET | 无 | 健康检查 |
+| `/api/applications` | GET/POST | 需要 | 申请列表 / 提交申请 |
+| `/api/applications/:id` | GET/POST/DELETE | 需要/管理员 | 申请详情 / 审批 / 删除 |
 
 ### 分发 API 示例
 
@@ -117,6 +120,10 @@ curl https://your-domain.com/api/distribute/example.com/_
 | `BLESSING_CLIENT_ID` | Blessing Skin OAuth 客户端 ID |
 | `BLESSING_CLIENT_SECRET` | Blessing Skin OAuth 客户端 Secret |
 | `INIT_KEY` | 系统初始化密钥（自定义，用于首次初始化管理员） |
+| `FEISHU_APP_ID` | 飞书应用 App ID（可选，用于多维表格同步） |
+| `FEISHU_APP_SECRET` | 飞书应用 App Secret（可选） |
+| `FEISHU_BITABLE_ID` | 飞书多维表格 ID（即 Bitable 的 `app_token`，可选） |
+| `FEISHU_TABLE_ID` | 飞书多维表格中的数据表 ID（可选） |
 
 ### 4. 部署
 
@@ -179,8 +186,48 @@ curl -X POST https://your-domain.com/api/init \
 
 在 [腾讯云 API 密钥管理](https://console.cloud.tencent.com/cam/capi) 获取。
 
-## KV 数据结构
+## 飞书多维表格同步（可选）
 
+> 如果不需要飞书同步，跳过此节即可——不配置相关环境变量时功能自动禁用，不影响主流程。
+
+### 1. 创建飞书应用
+
+1. 登录 [飞书开放平台](https://open.feishu.cn/)
+2. 创建企业自建应用，获取 **App ID** 和 **App Secret**
+3. 在「权限管理」中添加以下权限：
+   - `bitable:app` — 多维表格读写权限
+4. 发布应用并获取管理员审批
+
+### 2. 创建多维表格数据表
+
+在飞书中创建一个多维表格（Bitable），在其中创建一个数据表，配置以下列（**列名必须完全一致**）：
+
+| 列名 | 字段类型 | 说明 |
+|------|----------|------|
+| 申请ID | 文本 | 申请的唯一标识 |
+| 事件类型 | 单选 | 选项：提交申请、审批通过、审批拒绝、删除记录 |
+| 申请人 | 文本 | 申请人昵称 |
+| 申请人UID | 文本 | 申请人在皮肤站的 UID |
+| 申请人邮箱 | 文本 | 申请人邮箱 |
+| 根域名 | 文本 | 申请使用的根域名 |
+| 子域名 | 文本 | 申请的子域名 |
+| 记录类型 | 文本 | A / AAAA / CNAME / TXT / MX / SRV |
+| 记录值 | 文本 | DNS 记录的值 |
+| 申请理由 | 多行文本 | 申请时填写的理由 |
+| 代理 | 文本 | Cloudflare 代理状态（是/否） |
+| 操作人 | 文本 | 审批人 / 删除人 |
+| 拒绝原因 | 多行文本 | 拒绝时的原因 |
+| 操作时间 | 文本 | ISO 格式时间戳 |
+
+> **获取 Bitable ID 和 Table ID**：打开多维表格，浏览器地址栏中的 URL 格式为
+> `https://xxx.feishu.cn/base/{bitable_id}?table={table_id}`
+> 其中 `bitable_id` 即 `FEISHU_BITABLE_ID`，`table_id` 即 `FEISHU_TABLE_ID`。
+
+### 3. 配置环境变量
+
+在 EdgeOne Pages 项目设置中添加上述四个飞书环境变量即可。
+
+## KV 数据结构
 | Key 前缀 | 说明 | 示例 |
 |----------|------|------|
 | `config:admins` | 管理员 UID 列表 | `["1", "2"]` |
@@ -190,6 +237,8 @@ curl -X POST https://your-domain.com/api/init \
 | `provider:{id}` | DNS 服务商 | `{ id, type, name, config }` |
 | `domain:{id}` | 根域名 | `{ id, root_domain, provider_id }` |
 | `record:{domainId}:{recordId}` | DNS 记录 | `{ id, domain_id, subdomain, type, value, ttl, proxied, status, remote_id }` |
+| `application:{id}` | 域名申请 | `{ id, domain_id, root_domain, subdomain, type, value, reason, proxied, uid, nickname, email, status, reviewed_by, reject_reason }` |
+| `index:applications` | 申请索引 | `[{ id, domain_id, root_domain, subdomain, ... }]` |
 
 ## 本地开发
 

@@ -29,6 +29,7 @@ export async function onRequestGet(context) {
 }
 
 export async function onRequestPost(context) {
+  const { env, waitUntil } = context;
   const session = await getSession(context.request);
   if (!session || !session.isAdmin) {
     return new Response(JSON.stringify({ error: 'Forbidden' }), {
@@ -62,6 +63,8 @@ export async function onRequestPost(context) {
       headers: { 'Content-Type': 'application/json' },
     });
   }
+
+  const now = Date.now();
 
   if (action === 'approve') {
     const domain = await my_kv.get(`domain:${application.domain_id}`, 'json');
@@ -114,13 +117,47 @@ export async function onRequestPost(context) {
 
     application.status = 'approved';
     application.record_id = recordId;
-    application.reviewed_at = Date.now();
+    application.reviewed_at = now;
     application.reviewed_by = session.uid;
+
+    waitUntil(logToBitable(env, {
+      '申请ID': id,
+      '事件类型': '审批通过',
+      '申请人': application.nickname,
+      '申请人UID': String(application.uid),
+      '申请人邮箱': application.email || '',
+      '根域名': application.root_domain,
+      '子域名': application.subdomain,
+      '记录类型': application.type,
+      '记录值': application.value,
+      '申请理由': application.reason || '',
+      '代理': application.proxied ? '是' : '否',
+      '操作人': session.nickname,
+      '拒绝原因': '',
+      '操作时间': new Date(now).toISOString(),
+    }));
   } else {
     application.status = 'rejected';
-    application.reviewed_at = Date.now();
+    application.reviewed_at = now;
     application.reviewed_by = session.uid;
     application.reject_reason = body.reason || '';
+
+    waitUntil(logToBitable(env, {
+      '申请ID': id,
+      '事件类型': '审批拒绝',
+      '申请人': application.nickname,
+      '申请人UID': String(application.uid),
+      '申请人邮箱': application.email || '',
+      '根域名': application.root_domain,
+      '子域名': application.subdomain,
+      '记录类型': application.type,
+      '记录值': application.value,
+      '申请理由': application.reason || '',
+      '代理': application.proxied ? '是' : '否',
+      '操作人': session.nickname,
+      '拒绝原因': body.reason || '',
+      '操作时间': new Date(now).toISOString(),
+    }));
   }
 
   await my_kv.put(`application:${id}`, JSON.stringify(application));
@@ -138,6 +175,7 @@ export async function onRequestPost(context) {
 }
 
 export async function onRequestDelete(context) {
+  const { env, waitUntil } = context;
   const session = await getSession(context.request);
   if (!session) {
     return new Response(JSON.stringify({ error: 'Unauthorized' }), {
@@ -181,6 +219,23 @@ export async function onRequestDelete(context) {
       }
     }
 
+    waitUntil(logToBitable(env, {
+      '申请ID': id,
+      '事件类型': '删除记录',
+      '申请人': application.nickname,
+      '申请人UID': String(application.uid),
+      '申请人邮箱': application.email || '',
+      '根域名': application.root_domain,
+      '子域名': application.subdomain,
+      '记录类型': application.type,
+      '记录值': application.value,
+      '申请理由': application.reason || '',
+      '代理': application.proxied ? '是' : '否',
+      '操作人': session.nickname,
+      '拒绝原因': application.reject_reason || '',
+      '操作时间': new Date().toISOString(),
+    }));
+
     await my_kv.delete(`application:${id}`);
   }
 
@@ -192,6 +247,56 @@ export async function onRequestDelete(context) {
     headers: { 'Content-Type': 'application/json' },
   });
 }
+
+// ======================== 飞书多维表格 ========================
+
+const FEISHU_API = 'https://open.feishu.cn/open-apis';
+let feishuToken = null;
+let feishuTokenExpires = 0;
+
+async function getFeishuToken(env) {
+  if (feishuToken && Date.now() < feishuTokenExpires - 60000) {
+    return feishuToken;
+  }
+  const appId = env.FEISHU_APP_ID || '';
+  const appSecret = env.FEISHU_APP_SECRET || '';
+  if (!appId || !appSecret) return null;
+
+  const resp = await fetch(`${FEISHU_API}/auth/v3/tenant_access_token/internal`, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ app_id: appId, app_secret: appSecret }),
+  });
+  const data = await resp.json();
+  if (data.code !== 0) return null;
+  feishuToken = data.tenant_access_token;
+  feishuTokenExpires = Date.now() + (data.expire - 60) * 1000;
+  return feishuToken;
+}
+
+async function logToBitable(env, fields) {
+  const bitableId = env.FEISHU_BITABLE_ID || '';
+  const tableId = env.FEISHU_TABLE_ID || '';
+  if (!bitableId || !tableId) return;
+
+  try {
+    const token = await getFeishuToken(env);
+    if (!token) return;
+
+    await fetch(`${FEISHU_API}/bitable/v1/apps/${bitableId}/tables/${tableId}/records`, {
+      method: 'POST',
+      headers: {
+        'Authorization': `Bearer ${token}`,
+        'Content-Type': 'application/json',
+      },
+      body: JSON.stringify({ fields }),
+    });
+  } catch (e) {
+    // 静默失败，不影响主流程
+  }
+}
+
+// ======================== DNS API 工具 ========================
 
 async function createDNSRecord(provider, domain, record) {
   const fullRecord = `${record.subdomain}.${domain.root_domain}`;
@@ -341,6 +446,8 @@ async function hmacSha256Hex(key, data) {
   const sig = await hmacSha256(key, data);
   return Array.from(new Uint8Array(sig)).map(b => b.toString(16).padStart(2, '0')).join('');
 }
+
+// ======================== 会话管理 ========================
 
 const SESSION_TTL = 86400000;
 

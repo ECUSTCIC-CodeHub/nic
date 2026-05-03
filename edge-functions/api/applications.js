@@ -39,6 +39,7 @@ export async function onRequestGet(context) {
 }
 
 export async function onRequestPost(context) {
+  const { env, waitUntil } = context;
   const session = await getSession(context.request);
   if (!session) {
     return new Response(JSON.stringify({ error: 'Unauthorized' }), {
@@ -103,11 +104,78 @@ export async function onRequestPost(context) {
   allApps.push(application);
   await my_kv.put('index:applications', JSON.stringify(allApps));
 
+  // 使用 waitUntil 确保飞书异步调用在响应后仍能完成
+  waitUntil(logToBitable(env, {
+    '申请ID': id,
+    '事件类型': '提交申请',
+    '申请人': session.nickname,
+    '申请人UID': String(session.uid),
+    '申请人邮箱': session.email || '',
+    '根域名': domain.root_domain,
+    '子域名': subdomain,
+    '记录类型': type.toUpperCase(),
+    '记录值': value,
+    '申请理由': reason || '',
+    '代理': proxied ? '是' : '否',
+    '操作人': session.nickname,
+    '操作时间': new Date().toISOString(),
+  }));
+
   return new Response(JSON.stringify(application), {
     status: 201,
     headers: { 'Content-Type': 'application/json' },
   });
 }
+
+// ======================== 飞书多维表格 ========================
+
+const FEISHU_API = 'https://open.feishu.cn/open-apis';
+let feishuToken = null;
+let feishuTokenExpires = 0;
+
+async function getFeishuToken(env) {
+  if (feishuToken && Date.now() < feishuTokenExpires - 60000) {
+    return feishuToken;
+  }
+  const appId = env.FEISHU_APP_ID || '';
+  const appSecret = env.FEISHU_APP_SECRET || '';
+  if (!appId || !appSecret) return null;
+
+  const resp = await fetch(`${FEISHU_API}/auth/v3/tenant_access_token/internal`, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ app_id: appId, app_secret: appSecret }),
+  });
+  const data = await resp.json();
+  if (data.code !== 0) return null;
+  feishuToken = data.tenant_access_token;
+  feishuTokenExpires = Date.now() + (data.expire - 60) * 1000;
+  return feishuToken;
+}
+
+async function logToBitable(env, fields) {
+  const bitableId = env.FEISHU_BITABLE_ID || '';
+  const tableId = env.FEISHU_TABLE_ID || '';
+  if (!bitableId || !tableId) return;
+
+  try {
+    const token = await getFeishuToken(env);
+    if (!token) return;
+
+    await fetch(`${FEISHU_API}/bitable/v1/apps/${bitableId}/tables/${tableId}/records`, {
+      method: 'POST',
+      headers: {
+        'Authorization': `Bearer ${token}`,
+        'Content-Type': 'application/json',
+      },
+      body: JSON.stringify({ fields }),
+    });
+  } catch (e) {
+    // 静默失败，不影响主流程
+  }
+}
+
+// ======================== 会话管理 ========================
 
 const SESSION_TTL = 86400000;
 
