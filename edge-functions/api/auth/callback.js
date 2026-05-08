@@ -17,10 +17,9 @@ export async function onRequestGet(context) {
   const STATE_TTL_MS = 10 * 60 * 1000;
   const now = Date.now();
   const states = await my_kv.get('index:oauth:states', 'json') || [];
-  const expired = states.filter(s => now - s.created > STATE_TTL_MS);
-  for (const s of expired) {
-    await my_kv.delete(`oauth:state:${s.key}`);
-  }
+  const expired = states.filter(s => s.key !== state && now - s.created > STATE_TTL_MS);
+  // 批量清理过期 state
+  await Promise.all(expired.map(s => my_kv.delete(`oauth:state:${s.key}`)));
   const updated = states.filter(s => s.key !== state && now - s.created <= STATE_TTL_MS);
   await my_kv.put('index:oauth:states', JSON.stringify(updated));
 

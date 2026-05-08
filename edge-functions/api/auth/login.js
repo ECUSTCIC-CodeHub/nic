@@ -1,5 +1,4 @@
 const STATE_TTL_MS = 10 * 60 * 1000;
-const STATE_TTL_S = 10 * 60;
 
 export async function onRequestGet(context) {
   const { env } = context;
@@ -12,13 +11,12 @@ export async function onRequestGet(context) {
     redirect_uri: redirectUri,
     created: now,
   });
-  await my_kv.put(`oauth:state:${state}`, stateData, { expirationTtl: STATE_TTL_S });
+  await my_kv.put(`oauth:state:${state}`, stateData);
 
   const states = await my_kv.get('index:oauth:states', 'json') || [];
   const expired = states.filter(s => now - s.created > STATE_TTL_MS);
-  for (const s of expired) {
-    await my_kv.delete(`oauth:state:${s.key}`);
-  }
+  // 批量清理过期 state（KV 不支持 TTL，需手动清理）
+  await Promise.all(expired.map(s => my_kv.delete(`oauth:state:${s.key}`)));
   const active = states.filter(s => now - s.created <= STATE_TTL_MS);
   active.push({ key: state, created: now });
   await my_kv.put('index:oauth:states', JSON.stringify(active));
