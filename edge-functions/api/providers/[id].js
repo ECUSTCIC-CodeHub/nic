@@ -79,6 +79,19 @@ export async function onRequestDelete(context) {
     });
   }
 
+  // 检查是否有关联域名
+  const domains = await my_kv.get('index:domains', 'json') || [];
+  const relatedDomains = domains.filter(d => d.provider_id === id);
+  if (relatedDomains.length > 0) {
+    return new Response(JSON.stringify({
+      error: `该Provider下还有 ${relatedDomains.length} 个关联域名，请先删除关联域名`,
+      domains: relatedDomains.map(d => ({ id: d.id, root_domain: d.root_domain })),
+    }), {
+      status: 409,
+      headers: { 'Content-Type': 'application/json' },
+    });
+  }
+
   await my_kv.delete(`provider:${id}`);
 
   const providers = await my_kv.get('index:providers', 'json') || [];
