@@ -78,7 +78,7 @@ async function lookupDNSRecords(provider, domain, subdomain) {
   if (provider.type === 'dnspod') {
     const result = await callDNSPod(provider, 'DescribeRecordList', {
       Domain: domain.root_domain,
-      SubDomain: subdomain === '@' ? '@' : subdomain,
+      Subdomain: subdomain === '@' ? '@' : subdomain,
     });
 
     const list = result.RecordList || [];
