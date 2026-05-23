@@ -1,8 +1,20 @@
 export const config = {
-  matcher: ['/api/:path*'],
+  matcher: ['/:path*'],
+};
+
+const REDIRECTS = {
+  'nic.mc.ecustcic.com': 'nic.ecustcic.com',
 };
 
 export function middleware(context) {
+  const url = new URL(context.request.url);
+  const target = REDIRECTS[url.hostname];
+
+  if (target) {
+    const dest = `${url.protocol}//${target}${url.pathname}${url.search}`;
+    return Response.redirect(dest, 301);
+  }
+
   if (context.request.method === 'OPTIONS') {
     return new Response(null, {
       status: 204,
@@ -15,7 +27,6 @@ export function middleware(context) {
     });
   }
 
-  const url = new URL(context.request.url);
   if (url.pathname === '/api/health') {
     return new Response(JSON.stringify({ status: 'ok', timestamp: Date.now() }), {
       headers: { 'Content-Type': 'application/json' },
