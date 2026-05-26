@@ -15,6 +15,10 @@ export function middleware(context) {
     return Response.redirect(dest, 301);
   }
 
+  if (url.pathname === '/favicon.ico') {
+    return Response.redirect(`${url.origin}/ecustcic.png`, 301);
+  }
+
   if (context.request.method === 'OPTIONS') {
     return new Response(null, {
       status: 204,
