@@ -1,4 +1,6 @@
-const STATE_TTL_MS = 10 * 60 * 1000;
+// state 有效期放宽到 30 分钟：用户在皮肤站授权页停留时间可能较长，
+// 10 分钟太短容易误判为“Invalid or expired state”。
+const STATE_TTL_MS = 30 * 60 * 1000;
 const PENDING_TTL_MS = 60 * 1000;
 
 // 轻量回调：只做 state 校验 + 存证，不做任何出站网络请求。
@@ -31,15 +33,15 @@ export async function onRequestGet(context) {
     });
   }
 
-  // 校验并一次性消费 state（内联 TTL 判断，不再维护/扫描全局 index，最小化 KV/CPU）
+  // 校验 state。注意：这里不再一读就 delete，而是把消费动作放到最后成功创建 pending 之后，
+  // 避免边缘函数中途被 545 终止导致重试时 state 已被提前消费，进而误报 “Invalid or expired state”。
   const stateData = await my_kv.get(`oauth:state:${state}`, 'json');
-  await my_kv.delete(`oauth:state:${state}`);
   const now = Date.now();
   if (!stateData || now - stateData.created > STATE_TTL_MS) {
-    return new Response(JSON.stringify({ error: 'Invalid or expired state' }), {
-      status: 400,
-      headers: { 'Content-Type': 'application/json' },
-    });
+    if (stateData) await my_kv.delete(`oauth:state:${state}`);
+    // state 失效时不再直接返回裸 JSON，而是重定向到首页（SPA 会展示登录页），
+    // 避免用户在浏览器看到一串难懂的报错文案。
+    return Response.redirect(new URL('/', url.origin).toString(), 302);
   }
 
   // 纵深防御：与 login.js 一致的开放重定向防护，仅允许站内相对路径
@@ -58,6 +60,10 @@ export async function onRequestGet(context) {
     step: 'token',
     created: now,
   }));
+
+  // 最后才消费 state：pending 已成功创建后再删除，
+  // 缩小“已删除但 pending 未建好”的失败窗口（避免边缘函数重试时误报 Invalid state）。
+  await my_kv.delete(`oauth:state:${state}`);
 
   const sep = redirectUri.includes('?') ? '&' : '?';
   return new Response(null, {

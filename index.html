@@ -670,6 +670,11 @@
         } else if (resp.status === 410) {
           card.innerHTML = `<div style="padding:12px 0"><p style="margin:0 0 20px">登录会话已过期，请重新登录</p><button class="btn btn-skin" onclick="loginWithSkin()">重新登录</button></div>`;
           return;
+        } else if (resp.status >= 500) {
+          // 5xx / 545（Error return from script）属于边缘函数临时错误，
+          // 并非登录流程的确定性失败，继续轮询重试而非立即判死，避免偶发 545 导致登录失败。
+          await sleep(1000);
+          continue;
         } else if (resp.status >= 400 && resp.status !== 202) {
           let data = {};
           try { data = await resp.json(); } catch (e) {}
