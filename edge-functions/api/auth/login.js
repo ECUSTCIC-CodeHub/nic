@@ -3,7 +3,15 @@ const STATE_TTL_MS = 10 * 60 * 1000;
 export async function onRequestGet(context) {
   const { env } = context;
   const url = new URL(context.request.url);
-  const redirectUri = url.searchParams.get('redirect_uri') || '';
+  const rawRedirect = url.searchParams.get('redirect_uri') || '';
+
+  // 开放重定向防护：redirect_uri 仅允许站内相对路径（以单个 "/" 开头，
+  // 不含协议/主机），避免把用户重定向到任意外部站点。
+  const redirectUri = rawRedirect.startsWith('/')
+    && !rawRedirect.startsWith('//')
+    && !/^\/[^/]*:/.test(rawRedirect)
+    ? rawRedirect
+    : '/';
   const state = crypto.randomUUID().replace(/-/g, '');
 
   const now = Date.now();

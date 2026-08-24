@@ -85,6 +85,15 @@
     .login-card h1 { font-size: 28px; margin-bottom: 8px; }
     .login-card p { color: var(--text-dim); margin-bottom: 32px; }
 
+    .spinner {
+      width: 40px; height: 40px; margin: 0 auto;
+      border: 4px solid var(--border);
+      border-top-color: var(--primary);
+      border-radius: 50%;
+      animation: spin 0.9s linear infinite;
+    }
+    @keyframes spin { to { transform: rotate(360deg); } }
+
     .btn {
       display: inline-flex;
       align-items: center;
@@ -630,6 +639,52 @@
       return null;
     }
 
+    const sleep = (ms) => new Promise(r => setTimeout(r, ms));
+
+    // 分步轮询完成 OAuth 登录：/api/auth/complete 每次只做一步（换令牌/取用户），
+    // 边缘函数单次调用不会同时背负多次串行出站请求，避免超预算报脚本错误。
+    async function completeOAuthLogin(pid) {
+      document.getElementById('login-page').classList.remove('hidden');
+      document.getElementById('app').classList.add('hidden');
+      const card = document.querySelector('.login-card');
+      card.innerHTML = `<div style="padding:12px 0"><div class="spinner"></div><p style="margin-top:18px;margin-bottom:0">正在登录，请稍候…</p></div>`;
+
+      const maxAttempts = 45; // 最多约 45s
+      for (let i = 0; i < maxAttempts; i++) {
+        let resp;
+        try {
+          resp = await fetch(`/api/auth/complete?id=${pid}`, { headers: { 'Content-Type': 'application/json' } });
+        } catch (e) {
+          await sleep(1000);
+          continue;
+        }
+
+        if (resp.status === 200) {
+          const data = await resp.json();
+          if (data.token) {
+            token = data.token;
+            localStorage.setItem('session_token', data.token);
+            window.location.href = data.redirect_uri || '/';
+            return;
+          }
+        } else if (resp.status === 410) {
+          card.innerHTML = `<div style="padding:12px 0"><p style="margin:0 0 20px">登录会话已过期，请重新登录</p><button class="btn btn-skin" onclick="loginWithSkin()">重新登录</button></div>`;
+          return;
+        } else if (resp.status >= 400 && resp.status !== 202) {
+          let data = {};
+          try { data = await resp.json(); } catch (e) {}
+          const errText = String(data.error || '登录失败');
+          const safeErr = errText.replace(/[&<>"']/g, c => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]));
+          card.innerHTML = `<div style="padding:12px 0"><p style="margin:0 0 20px">${safeErr}</p><button class="btn btn-skin" onclick="window.location.href='/'">返回</button></div>`;
+          return;
+        }
+        // 202 或其它临时状态：继续轮询
+        await sleep(1000);
+      }
+
+      card.innerHTML = `<div style="padding:12px 0"><p style="margin:0 0 20px">登录超时，请重试</p><button class="btn btn-skin" onclick="window.location.href='/'">返回</button></div>`;
+    }
+
     async function api(path, options = {}) {
       const t = getToken();
       const headers = { 'Content-Type': 'application/json', ...(options.headers || {}) };
@@ -1160,6 +1215,12 @@
     }
 
     async function init() {
+      const params = new URLSearchParams(window.location.search);
+      if (params.get('auth') === 'pending' && params.get('id')) {
+        await completeOAuthLogin(params.get('id'));
+        return;
+      }
+
       const t = getToken();
       if (!t) { showLogin(); return; }
       try {
