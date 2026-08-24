@@ -1,6 +1,6 @@
 const STATE_TTL_MS = 10 * 60 * 1000;
-// 下调超时以降低两次串行上游请求的总耗时，避免接近边缘函数平台的 wall-clock 上限
-const FETCH_TIMEOUT_MS = 8000;
+// 超时设置：降低两次串行上游请求的总耗时，避免贴近边缘函数平台的 wall-clock 上限
+const FETCH_TIMEOUT_MS = 5000;
 
 // 对上游请求设置超时，避免边缘函数挂起或超时报错
 async function fetchWithTimeout(url, options) {
@@ -51,18 +51,11 @@ export async function onRequestGet(context) {
     });
   }
 
+  // 校验并一次性消费 state（内联 TTL 判断，不再维护/扫描全局 index，减少每次回调的 KV 与 CPU 开销）
   const stateData = await my_kv.get(`oauth:state:${state}`, 'json');
   await my_kv.delete(`oauth:state:${state}`);
-
   const now = Date.now();
-  const states = await my_kv.get('index:oauth:states', 'json') || [];
-  const expired = states.filter(s => s.key !== state && now - s.created > STATE_TTL_MS);
-  // 批量清理过期 state
-  await Promise.all(expired.map(s => my_kv.delete(`oauth:state:${s.key}`)));
-  const updated = states.filter(s => s.key !== state && now - s.created <= STATE_TTL_MS);
-  await my_kv.put('index:oauth:states', JSON.stringify(updated));
-
-  if (!stateData) {
+  if (!stateData || now - stateData.created > STATE_TTL_MS) {
     return new Response(JSON.stringify({ error: 'Invalid or expired state' }), {
       status: 400,
       headers: { 'Content-Type': 'application/json' },
@@ -71,6 +64,7 @@ export async function onRequestGet(context) {
 
   const skinUrl = (env.BLESSING_SKIN_URL || 'https://skin.mc.ecustcic.com').replace(/\/+$/, '');
 
+  // 用授权码换取令牌
   const params = new URLSearchParams();
   params.set('grant_type', 'authorization_code');
   params.set('client_id', env.BLESSING_CLIENT_ID);
@@ -99,24 +93,20 @@ export async function onRequestGet(context) {
   if (!tokenResponse.ok || tokenData.error || !tokenData.access_token) {
     const upstreamErr = tokenData.error_description || tokenData.error;
     return new Response(JSON.stringify({
-      // 上游返回非 JSON（HTML 错误页等）时，safeJson 会给出 invalid_json_response，
-      // 这里用中文兜底，避免把内部占位符直接暴露给用户
       error: upstreamErr && upstreamErr !== 'invalid_json_response'
         ? upstreamErr
         : `皮肤站返回异常 (HTTP ${tokenResponse.status})`,
     }), {
-      // 上游服务故障(5xx)映射为 502，凭证/参数类错误(4xx)保持 400
       status: tokenResponse.status >= 500 ? 502 : 400,
       headers: { 'Content-Type': 'application/json' },
     });
   }
 
+  // 获取用户信息
   let userResponse;
   try {
     userResponse = await fetchWithTimeout(`${skinUrl}/api/user`, {
-      headers: {
-        Authorization: `Bearer ${tokenData.access_token}`,
-      },
+      headers: { Authorization: `Bearer ${tokenData.access_token}` },
     });
   } catch (e) {
     return new Response(JSON.stringify({ error: '无法获取皮肤站用户信息，请重试' }), {
@@ -125,7 +115,6 @@ export async function onRequestGet(context) {
     });
   }
   const userData = await safeJson(userResponse);
-  // 用空值判断而非 !userData.uid，避免 uid 为数字 0 时被误判为获取失败
   if (!userResponse.ok || userData.uid == null) {
     return new Response(JSON.stringify({ error: '皮肤站用户信息获取失败，请重试' }), {
       status: 400,
@@ -153,7 +142,7 @@ export async function onRequestGet(context) {
   return new Response(null, {
     status: 302,
     headers: {
-      Location: `${redirectUri}?token=${sessionId}`,
+      Location: `${redirectUri}${redirectUri.includes('?') ? '&' : '?'}token=${sessionId}`,
       'Set-Cookie': `session=${sessionId}; Path=/; HttpOnly; Secure; SameSite=Strict; Max-Age=86400`,
     },
   });

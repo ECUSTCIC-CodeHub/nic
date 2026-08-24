@@ -11,15 +11,9 @@ export async function onRequestGet(context) {
     redirect_uri: redirectUri,
     created: now,
   });
+  // 只写入单个 state 键；过期校验在 callback 里按 created 时间内联判断，
+  // 不再维护全局 index 数组，减少每次登录/回调的 KV 与 CPU 开销（边缘函数预算有限）
   await my_kv.put(`oauth:state:${state}`, stateData);
-
-  const states = await my_kv.get('index:oauth:states', 'json') || [];
-  const expired = states.filter(s => now - s.created > STATE_TTL_MS);
-  // 批量清理过期 state（KV 不支持 TTL，需手动清理）
-  await Promise.all(expired.map(s => my_kv.delete(`oauth:state:${s.key}`)));
-  const active = states.filter(s => now - s.created <= STATE_TTL_MS);
-  active.push({ key: state, created: now });
-  await my_kv.put('index:oauth:states', JSON.stringify(active));
 
   const skinUrl = (env.BLESSING_SKIN_URL || 'https://skin.mc.ecustcic.com').replace(/\/+$/, '');
   const authUrl = new URL(`${skinUrl}/oauth/authorize`);
