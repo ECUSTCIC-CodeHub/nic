@@ -13,3 +13,12 @@ master:
             username: ${GITHUB_USERNAME}
             password: ${GITHUB_ACCESS_TOKEN}
             force: true
+    - name: edgeone
+      runner:
+        cpus: 1
+      imports: https://cnb.cool/ecustcic/key/-/blob/main/env.yml
+      stages:
+        # 将构建输出部署到 EdgeOne Pages
+        - name: Deploy to EdgeOne Pages
+          image: tencentcom/deploy-eopages:latest
+          script: edgeone pages deploy . -n nic-domain -t $EDGEONE_API_TOKEN
